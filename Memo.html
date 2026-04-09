@@ -1,0 +1,848 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>备忘录</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#f5f5f4;--card:#fff;--bd:#e7e5e4;--tx:#1c1917;--ac:#c2410c;--link:#2563eb;--snap-hl:rgba(37,99,235,.12)}
+body{font-family:system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--tx);min-height:100vh}
+header{position:fixed;top:0;left:0;right:0;background:rgba(245,245,244,.92);backdrop-filter:blur(8px);z-index:100;display:flex;align-items:center;justify-content:space-between;padding:8px 16px;border-bottom:1px solid var(--bd)}
+header h1{font-size:17px;font-weight:700}
+.actions{display:flex;gap:6px;align-items:center}
+.btn{background:var(--card);border:1px solid var(--bd);border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;color:var(--tx);transition:all .15s}
+.btn:hover{border-color:#a8a29e}
+.btn.primary{background:var(--ac);color:#fff;border-color:var(--ac)}
+.btn.primary:hover{background:#9a3412}
+input.search{border:1px solid var(--bd);border-radius:6px;padding:4px 8px;font-size:11px;outline:none;width:120px}
+input.search:focus{border-color:#a8a29e}
+
+/* canvas */
+#canvas{position:relative;min-height:100vh;padding:52px 16px 200px}
+#canvas.tidy{display:flex;flex-wrap:wrap;align-content:flex-start;gap:14px}
+#canvas.tidy .card{position:static!important;left:0!important;top:0!important;margin:0;animation:none!important}
+#canvas.tidy .card .resize-r{display:none}
+
+/* card base */
+.card{position:absolute;background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:8px;width:240px;box-shadow:0 1px 3px rgba(0,0,0,.06);z-index:1;animation:fadeIn .15s ease;transition:box-shadow .15s,transform .15s;overflow:visible}
+@keyframes fadeIn{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:scale(1)}}
+.card:hover{box-shadow:0 2px 8px rgba(0,0,0,.09);z-index:5}
+.card.active{z-index:10;box-shadow:0 4px 16px rgba(0,0,0,.12)}
+
+/* snap hover highlight during drag */
+.card.snap-preview{box-shadow:0 0 0 2px var(--link),0 0 12px var(--snap-hl);transform:scale(1.03);z-index:6}
+
+/* card header: drag handle + delete button side by side */
+.card-header{display:flex;align-items:center;margin-bottom:4px;gap:4px}
+.card-header .drag-handle{flex:1;cursor:grab;height:6px;border-radius:3px;transition:background .15s}
+.card:hover .card-header .drag-handle{background:#edebe9}
+.card.dragging .drag-handle{background:#e7e5e4;cursor:grabbing}
+.card.dragging{cursor:grabbing}
+.card-header .btn-del-card{width:18px;height:18px;border-radius:6px;border:none;background:transparent;color:#ccc;font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:color .15s,background .15s}
+.card-header .btn-del-card:hover{color:#dc2626;background:#fef2f2}
+
+/* textarea */
+.card textarea{display:block;width:100%;border:none;outline:none;resize:vertical;background:transparent;font:inherit;font-size:13px;line-height:1.6;color:var(--tx);min-height:32px;cursor:text;user-select:text}
+.card textarea::placeholder{color:#ccc}
+
+/* image area */
+.img-wrap{position:relative;border-radius:4px;overflow:hidden;cursor:pointer;line-height:0;margin-top:4px;flex-shrink:0}
+.img-wrap img{display:block;width:100%;max-height:260px;object-fit:contain;border-radius:4px;pointer-events:none;-webkit-user-drag:none}
+.img-wrap .btn-del-img{position:absolute;top:3px;right:3px;width:18px;height:18px;border:none;border-radius:50%;background:rgba(0,0,0,.5);color:#fff;font-size:10px;cursor:pointer;display:none;align-items:center;justify-content:center;line-height:1;z-index:3}
+.img-wrap:hover .btn-del-img{display:flex}
+
+/* image-only card */
+.card.img-only{padding:4px}
+.card.img-only .img-wrap{margin:0}
+.card.img-only .img-wrap img{max-height:none;object-fit:contain;cursor:grab}
+.card.img-only.dragging .img-wrap img{cursor:grabbing}
+.card.img-only.resized .img-wrap{position:absolute;inset:4px;border-radius:4px}
+.card.img-only.resized .img-wrap img{width:100%;height:100%;object-fit:fill;max-height:none}
+
+/* file card */
+.card.file-card{padding:8px}
+.file-icon{width:40px;height:40px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+.file-icon.pdf{background:#fee2e2;color:#dc2626}
+.file-icon.doc{background:#dbeafe;color:#2563eb}
+.file-icon.xls{background:#d1fae5;color:#059669}
+.file-icon.ppt{background:#fef3c7;color:#d97706}
+.file-icon.img{background:#ede9fe;color:#7c3aed}
+.file-icon.def{background:#f3f4f6;color:#6b7280}
+.file-info{flex:1;min-width:0;margin-left:10px}
+.file-name{font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.file-path{font-size:10px;color:#999;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* resize handle */
+.resize-r{position:absolute;right:0;bottom:0;width:16px;height:16px;cursor:nwse-resize;z-index:5;opacity:0;transition:opacity .15s}
+.card:hover .resize-r{opacity:1}
+.resize-r::after{content:'';position:absolute;right:3px;bottom:3px;width:6px;height:6px;border-right:2px solid #bbb;border-bottom:2px solid #bbb}
+
+/* snap link line — drawn on SVG */
+#snapSvg{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:0}
+
+/* modal */
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.7);display:none;align-items:center;justify-content:center;z-index:200}
+.modal.open{display:flex}
+.modal img{max-width:94vw;max-height:94vh;border-radius:6px;cursor:pointer}
+
+/* hint */
+.empty-hint{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#d6d3d1;font-size:14px;user-select:none;pointer-events:none}
+
+/* tidy animation */
+.card.anim{transition:left .35s ease,top .35s ease,width .35s ease,transform .15s,box-shadow .15s}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>备忘录</h1>
+  <div class="actions">
+    <input class="search" id="searchBox" placeholder="搜索...">
+    <button class="btn" onclick="exportTxt()">导出</button>
+    <button class="btn primary" id="tidyBtn" onclick="toggleTidy()">整理</button>
+  </div>
+</header>
+
+<div id="canvas">
+  <svg id="snapSvg"></svg>
+</div>
+
+<div class="modal" id="modal" onclick="closeModal()">
+  <img id="modalImg" src="" onclick="event.stopPropagation()">
+</div>
+
+<script>
+/* ============ storage ============ */
+const STORE_KEY = 'memo_v11';
+const OLD_KEY = 'memo_v10';
+
+function migrate() {
+  let data = null;
+  try { data = JSON.parse(localStorage.getItem(OLD_KEY)); } catch {}
+  if (data && Array.isArray(data) && data.length && !localStorage.getItem(STORE_KEY)) {
+    data.forEach(m => {
+      if (!m.type) m.type = m.image ? 'image' : 'text';
+      if (!m.fileName) m.fileName = null;
+      if (!m.filePath) m.filePath = null;
+      if (m.linkedTo === undefined) m.linkedTo = null;
+    });
+    localStorage.setItem(STORE_KEY, JSON.stringify(data));
+  }
+}
+migrate();
+
+const load = () => { try { return JSON.parse(localStorage.getItem(STORE_KEY)) || []; } catch { return []; } };
+const save = (d) => localStorage.setItem(STORE_KEY, JSON.stringify(d));
+let memos = load();
+
+/* ============ constants ============ */
+const CARD_W = 240, HDR_H = 52, PAD = 16, SNAP_DIST = 50; // edge distance threshold
+
+/* ============ helpers ============ */
+const $ = (s) => document.querySelector(s);
+const $$ = (s) => document.querySelectorAll(s);
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+const esc = (s) => (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const svg = $('#snapSvg');
+
+function getFileType(name) {
+  if (!name) return 'def';
+  const ext = name.split('.').pop().toLowerCase();
+  if (ext === 'pdf') return 'pdf';
+  if (['doc','docx'].includes(ext)) return 'doc';
+  if (['xls','xlsx','csv'].includes(ext)) return 'xls';
+  if (['ppt','pptx'].includes(ext)) return 'ppt';
+  if (['png','jpg','jpeg','gif','webp','svg','bmp','ico'].includes(ext)) return 'img';
+  return 'def';
+}
+
+function getFileEmoji(type) {
+  const map = { pdf:'PDF', doc:'W', xls:'X', ppt:'P', img:'🖼', def:'📄' };
+  return map[type] || '📄';
+}
+
+/* ============ data operations ============ */
+function createMemo(x, y, text, image, type, fileName, filePath) {
+  const m = {
+    id: uid(), text: text || '', image: image || null,
+    type: type || (image ? 'image' : 'text'),
+    fileName: fileName || null, filePath: filePath || null,
+    linkedTo: null, created: Date.now(), x, y, w: null, h: null
+  };
+  memos.push(m);
+  save(memos);
+  appendCard(m);
+  return m.id;
+}
+
+function removeMemo(id) {
+  // clear links pointing to this memo
+  memos.forEach(m => { if (m.linkedTo === id) m.linkedTo = null; });
+  const el = document.querySelector(`.card[data-id="${id}"]`);
+  if (el) {
+    el.style.opacity = '0';
+    el.style.transform = 'scale(.95)';
+    setTimeout(() => { el.remove(); afterChange(); }, 160);
+  }
+  memos = memos.filter(m => m.id !== id);
+  save(memos);
+}
+
+function removeImage(id) {
+  const m = memos.find(v => v.id === id);
+  if (!m) return;
+  m.image = null;
+  if (!m.text.trim()) { removeMemo(id); return; }
+  m.type = 'text';
+  save(memos);
+  fullRender();
+}
+
+function updateText(id, text) {
+  const m = memos.find(v => v.id === id);
+  if (!m) return;
+  m.text = text;
+  save(memos);
+  if (!text.trim() && !m.image && m.type !== 'file') {
+    clearTimeout(m._timer);
+    m._timer = setTimeout(() => {
+      const m2 = memos.find(v => v.id === id);
+      if (m2 && !m2.text.trim() && !m2.image && m2.type !== 'file') removeMemo(id);
+    }, 3000);
+  } else {
+    clearTimeout(m._timer);
+  }
+}
+
+function savePosition(id, x, y) {
+  const m = memos.find(v => v.id === id);
+  if (m) { m.x = Math.round(x); m.y = Math.round(y); save(memos); }
+}
+
+function saveSize(id, w, h) {
+  const m = memos.find(v => v.id === id);
+  if (m) { m.w = Math.round(w); m.h = Math.round(h); save(memos); }
+}
+
+/* ============ snap/link system ============ */
+
+/* Get all IDs linked to a given memo (bidirectional) — single pass */
+function getLinkedIds(id) {
+  const ids = [];
+  const m = memos.find(v => v.id === id);
+  if (m && m.linkedTo) ids.push(m.linkedTo);
+  memos.forEach(m => { if (m.linkedTo === id) ids.push(m.id); });
+  return ids;
+}
+
+/* During drag: highlight nearby cards, track closest */
+let snapPreviewId = null;
+
+function clearSnapPreview() {
+  if (snapPreviewId) {
+    const el = document.querySelector(`.card[data-id="${snapPreviewId}"]`);
+    if (el) el.classList.remove('snap-preview');
+    snapPreviewId = null;
+  }
+}
+
+/* Calculate minimum edge-to-edge distance between two rectangles */
+function edgeDist(r1, r2) {
+  const dx = r2.left > r1.right ? r2.left - r1.right : (r1.left > r2.right ? r1.left - r2.right : 0);
+  const dy = r2.top > r1.bottom ? r2.top - r1.bottom : (r1.top > r2.bottom ? r1.top - r2.bottom : 0);
+  return Math.hypot(dx, dy);
+}
+
+function updateSnapPreview(draggedId) {
+  clearSnapPreview();
+  const dragEl = document.querySelector(`.card[data-id="${draggedId}"]`);
+  if (!dragEl) return;
+  const dRect = dragEl.getBoundingClientRect();
+  let closestId = null, closestDist = Infinity;
+
+  $$('.card').forEach(other => {
+    const oid = other.dataset.id;
+    if (oid === draggedId) return;
+    const oRect = other.getBoundingClientRect();
+    const dist = edgeDist(dRect, oRect);
+    if (dist < SNAP_DIST && dist < closestDist) {
+      closestDist = dist;
+      closestId = oid;
+    }
+  });
+
+  if (closestId) {
+    const el = document.querySelector(`.card[data-id="${closestId}"]`);
+    if (el) el.classList.add('snap-preview');
+    snapPreviewId = closestId;
+  }
+}
+
+/* On drag end: link if preview target exists */
+function performSnap(draggedId) {
+  if (!snapPreviewId) return;
+  const dm = memos.find(v => v.id === draggedId);
+  if (!dm) return;
+  if (dm.linkedTo === snapPreviewId) { clearSnapPreview(); return; }
+  dm.linkedTo = snapPreviewId;
+  save(memos);
+  clearSnapPreview();
+  redrawSnapLines();
+}
+
+/* Draw all snap lines on SVG */
+function redrawSnapLines() {
+  svg.innerHTML = '';
+  const NS = 'http://www.w3.org/2000/svg';
+  memos.forEach(m => {
+    if (!m.linkedTo) return;
+    const fromEl = document.querySelector(`.card[data-id="${m.id}"]`);
+    const toEl = document.querySelector(`.card[data-id="${m.linkedTo}"]`);
+    if (!fromEl || !toEl) return;
+
+    const x1 = fromEl.offsetLeft + fromEl.offsetWidth / 2;
+    const y1 = fromEl.offsetTop + fromEl.offsetHeight / 2;
+    const x2 = toEl.offsetLeft + toEl.offsetWidth / 2;
+    const y2 = toEl.offsetTop + toEl.offsetHeight / 2;
+
+    const line = document.createElementNS(NS, 'line');
+    line.setAttribute('x1', x1);
+    line.setAttribute('y1', y1);
+    line.setAttribute('x2', x2);
+    line.setAttribute('y2', y2);
+    line.setAttribute('stroke', '#2563eb');
+    line.setAttribute('stroke-width', '2');
+    line.setAttribute('stroke-linecap', 'round');
+    line.setAttribute('opacity', '0.5');
+    svg.appendChild(line);
+  });
+}
+
+/* Unlink ALL links involving this card (both directions) */
+function unlinkAll(id) {
+  memos.forEach(m => { if (m.linkedTo === id) m.linkedTo = null; });
+  const m = memos.find(v => v.id === id);
+  if (m) m.linkedTo = null;
+  save(memos);
+  redrawSnapLines();
+}
+
+/* ============ render ============ */
+function isImgOnly(m) {
+  return m.type === 'image' && !!m.image && !(m.text && m.text.trim());
+}
+
+function buildCard(m) {
+  const io = isImgOnly(m);
+  const isFile = m.type === 'file';
+  const cls = 'card'
+    + (io ? ' img-only' : '')
+    + (isFile ? ' file-card' : '');
+
+  const style = [
+    `left:${m.x || PAD}px`,
+    `top:${m.y || (HDR_H + PAD)}px`,
+    m.w ? `width:${m.w}px` : '',
+    (io && m.h) ? `height:${m.h}px` : '',
+    (io || isFile) ? '' : 'display:flex;flex-direction:column'
+  ].filter(Boolean).join(';');
+
+  let inner = '';
+
+  if (isFile) {
+    const ft = getFileType(m.fileName);
+    const emoji = getFileEmoji(ft);
+    inner = `
+      <div class="card-header"><div class="drag-handle"></div><button class="btn-del-card" title="删除">×</button></div>
+      <div style="display:flex;align-items:center;margin-top:4px">
+        <div class="file-icon ${ft}">${emoji}</div>
+        <div class="file-info">
+          <div class="file-name" title="${esc(m.fileName)}">${esc(m.fileName)}</div>
+          <div class="file-path" title="${esc(m.filePath)}">${esc(m.filePath || '本地文件')}</div>
+        </div>
+      </div>
+      <div class="resize-r"></div>`;
+  } else if (io) {
+    inner = `<div class="card-header"><div class="drag-handle"></div><button class="btn-del-card" title="删除">×</button></div>
+      <div class="img-wrap"><img src="${m.image}"><button class="btn-del-img">×</button></div>
+      <div class="resize-r"></div>`;
+  } else {
+    // text or text+image — card itself is flex column
+    let body = `<div class="card-header"><div class="drag-handle"></div><button class="btn-del-card" title="删除">×</button></div>`;
+    if (!m.image) {
+      body += `<textarea placeholder="写点什么…" ${m.text && m.text.length > 100 ? 'rows="6"' : ''}>${esc(m.text)}</textarea>`;
+    } else {
+      body += `<div class="img-wrap"><img src="${m.image}"><button class="btn-del-img">×</button></div>`;
+      body += `<textarea placeholder="写点什么…">${esc(m.text)}</textarea>`;
+    }
+    body += '<div class="resize-r"></div>';
+    inner = body;
+  }
+  return `<div class="${cls}" data-id="${m.id}" style="${style}">${inner}</div>`;
+}
+
+function appendCard(m) {
+  hideHint();
+  const cvs = $('#canvas');
+  const tmp = document.createElement('div');
+  tmp.innerHTML = buildCard(m);
+  const el = tmp.firstElementChild;
+  cvs.appendChild(el);
+  bindCardEvents(el);
+  fitCanvas();
+}
+
+function fullRender() {
+  const q = $('#searchBox').value.trim().toLowerCase();
+  const filtered = q ? memos.filter(m => (m.text || '').toLowerCase().includes(q) || (m.fileName || '').toLowerCase().includes(q)) : memos;
+  $$('.card').forEach(e => e.remove());
+  if (!filtered.length) { showHint(); redrawSnapLines(); return; }
+  hideHint();
+  filtered.forEach(m => {
+    const tmp = document.createElement('div');
+    tmp.innerHTML = buildCard(m);
+    const el = tmp.firstElementChild;
+    $('#canvas').appendChild(el);
+    bindCardEvents(el);
+  });
+  setTimeout(redrawSnapLines, 30);
+  fitCanvas();
+}
+
+function afterChange() { fitCanvas(); if (!memos.length) showHint(); redrawSnapLines(); }
+
+function showHint() {
+  if (!$('.empty-hint') && !memos.length) {
+    $('#canvas').insertAdjacentHTML('beforeend', '<div class="empty-hint">双击空白处创建备忘，或粘贴/拖入图片/文件</div>');
+  }
+}
+function hideHint() { $$('.empty-hint').forEach(e => e.remove()); }
+
+function fitCanvas() {
+  const cards = $$('.card');
+  if (!cards.length) { $('#canvas').style.minHeight = '100vh'; return; }
+  let maxBottom = 0;
+  cards.forEach(c => { const b = c.offsetTop + c.offsetHeight + 20; if (b > maxBottom) maxBottom = b; });
+  $('#canvas').style.minHeight = Math.max(maxBottom, innerHeight) + 'px';
+}
+
+/* ============ tidy ============ */
+let isTidy = false;
+
+function toggleTidy() {
+  if (!memos.length) return;
+  const cvs = $('#canvas');
+  
+  if (isTidy) {
+    // scatter: measure card heights FIRST while still in tidy layout,
+    // then remove tidy and set absolute positions in the same frame
+    
+    const GAP = 14;
+    const cols = Math.max(1, Math.floor(($('#canvas').offsetWidth - PAD * 2 + GAP) / (CARD_W + GAP)));
+    
+    // Measure heights while still in tidy (position:static)
+    const positions = [], positionsById = new Map();
+    $$('.card').forEach((el, i) => {
+      const m = memos.find(v => v.id === el.dataset.id);
+      if (!m) return;
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const pos = { id: m.id, col, row, h: el.offsetHeight };
+      positions.push(pos);
+      positionsById.set(m.id, pos);
+    });
+    const rowY = {};
+    let currentY = HDR_H + PAD;
+    const rowH = {};
+    positions.forEach(p => {
+      rowH[p.row] = Math.max(rowH[p.row] || 60, p.h);
+    });
+    Object.keys(rowH).sort((a,b) => a - b).forEach(row => {
+      rowY[row] = currentY;
+      currentY += rowH[row] + GAP;
+    });
+    
+    // Now remove tidy and immediately set absolute positions
+    isTidy = false;
+    cvs.classList.remove('tidy');
+    svg.style.display = '';
+    $('#tidyBtn').textContent = '整理';
+    
+    $$('.card').forEach(el => {
+      const m = memos.find(v => v.id === el.dataset.id);
+      if (!m) return;
+      const p = positionsById.get(m.id);
+      if (!p) return;
+      m.x = PAD + p.col * (CARD_W + GAP);
+      m.y = rowY[p.row];
+      m.w = CARD_W; m.h = null;
+      el.style.left = m.x + 'px';
+      el.style.top = m.y + 'px';
+      el.style.width = CARD_W + 'px';
+      el.style.height = '';
+    });
+    
+    save(memos);
+    fitCanvas();
+    setTimeout(redrawSnapLines, 50);
+    return;
+  }
+  
+  // tidy: flexbox grid
+  isTidy = true;
+  $('#tidyBtn').textContent = '散开';
+  svg.style.display = 'none';
+  $$('.card').forEach(el => el.classList.add('anim'));
+  setTimeout(() => {
+    cvs.classList.add('tidy');
+    $$('.card').forEach(el => {
+      el.style.left = '';
+      el.style.top = '';
+      el.style.width = CARD_W + 'px';
+      el.style.height = '';
+      setTimeout(() => el.classList.remove('anim'), 400);
+    });
+    fitCanvas();
+  }, 10);
+}
+
+/* ============ card event binding ============ */
+function bindCardEvents(el) {
+  const mid = el.dataset.id;
+  const io = el.classList.contains('img-only');
+  const isFile = el.classList.contains('file-card');
+  let action = null;
+  let startX, startY, origX, origY, startW, startH, didMove;
+  // track linked card offsets for group drag
+  let linkedOffsets = [];
+
+  /* ---- drag via drag-handle ---- */
+  if (!io) {
+    const handle = el.querySelector('.drag-handle');
+    if (handle) handle.addEventListener('mousedown', e => { if (e.button === 0) startDrag(e); });
+  }
+
+  /* ---- drag via img-wrap (img-only) ---- */
+  if (io) {
+    const imgWrap = el.querySelector('.img-wrap');
+    if (imgWrap) {
+      imgWrap.addEventListener('mousedown', e => {
+        if (e.target.closest('.btn-del-img') || e.button !== 0) return;
+        e.stopPropagation(); startDrag(e);
+      });
+      imgWrap.addEventListener('click', e => {
+        if (e.target.closest('.btn-del-img') || didMove) return;
+        const m = memos.find(v => v.id === mid);
+        if (m && m.image) { $('#modalImg').src = m.image; $('#modal').classList.add('open'); }
+      });
+    }
+  }
+
+  /* ---- resize handle ---- */
+  const resizer = el.querySelector('.resize-r');
+  if (resizer) {
+    resizer.addEventListener('mousedown', e => {
+      if (e.button !== 0) return;
+      action = 'resize'; startX = e.clientX; startY = e.clientY;
+      startW = el.offsetWidth; startH = el.offsetHeight; didMove = false;
+      el.classList.add('active'); el.style.transition = 'none';
+      e.preventDefault(); e.stopPropagation();
+    });
+  }
+
+  function startDrag(e) {
+    action = 'drag'; didMove = false;
+    startX = e.clientX; startY = e.clientY;
+    origX = parseFloat(el.style.left) || 0;
+    origY = parseFloat(el.style.top) || 0;
+    el.classList.add('active', 'dragging'); el.style.transition = 'none';
+    e.preventDefault(); e.stopPropagation();
+
+    // pre-calculate linked card offsets for group drag
+    linkedOffsets = [];
+    const linkedIds = getLinkedIds(mid);
+    linkedIds.forEach(lid => {
+      const linkedEl = document.querySelector(`.card[data-id="${lid}"]`);
+      const linkedM = memos.find(v => v.id === lid);
+      if (linkedEl && linkedM) {
+        linkedOffsets.push({
+          id: lid,
+          dx: linkedM.x - (memos.find(v => v.id === mid)?.x || 0),
+          dy: linkedM.y - (memos.find(v => v.id === mid)?.y || 0)
+        });
+      }
+    });
+  }
+
+  function onMouseMove(e) {
+    if (!action) return;
+    const dx = e.clientX - startX, dy = e.clientY - startY;
+    if (action === 'drag') {
+      if (!didMove && (Math.abs(dx) + Math.abs(dy)) > 3) didMove = true;
+      const newX = origX + dx;
+      const newY = origY + dy;
+      el.style.left = newX + 'px';
+      el.style.top = newY + 'px';
+
+      // move linked cards in sync
+      linkedOffsets.forEach(lo => {
+        const linkedEl = document.querySelector(`.card[data-id="${lo.id}"]`);
+        if (linkedEl) {
+          linkedEl.style.left = (newX + lo.dx) + 'px';
+          linkedEl.style.top = (newY + lo.dy) + 'px';
+        }
+      });
+
+      // snap preview + redraw existing lines to follow drag
+      if (didMove) { updateSnapPreview(mid); redrawSnapLines(); }
+    }
+    if (action === 'resize') {
+      didMove = true;
+      const minW = io ? 60 : (isFile ? 180 : 140);
+      let newW, newH;
+      if (e.shiftKey) {
+        const ratio = startW / startH || 1;
+        newW = Math.max(minW, startW + dx); newH = Math.max(40, newW / ratio);
+      } else {
+        newW = Math.max(minW, startW + dx); newH = Math.max(40, startH + dy);
+      }
+      el.style.width = newW + 'px'; el.style.height = newH + 'px';
+      if (io && !el.classList.contains('resized')) el.classList.add('resized');
+    }
+  }
+
+  function onMouseUp() {
+    if (!action) return;
+    el.classList.remove('active', 'dragging');
+    el.style.transition = '';
+    if (action === 'drag') {
+      const newX = parseFloat(el.style.left) || 0;
+      const newY = parseFloat(el.style.top) || 0;
+      savePosition(mid, newX, newY);
+      // save linked positions
+      linkedOffsets.forEach(lo => {
+        const linkedEl = document.querySelector(`.card[data-id="${lo.id}"]`);
+        if (linkedEl) {
+          savePosition(lo.id, parseFloat(linkedEl.style.left) || 0, parseFloat(linkedEl.style.top) || 0);
+        }
+      });
+      // perform snap
+      if (didMove) performSnap(mid);
+    }
+    if (action === 'resize') saveSize(mid, el.offsetWidth, el.offsetHeight);
+    action = null;
+    linkedOffsets = [];
+    fitCanvas();
+    setTimeout(() => { didMove = false; }, 50);
+  }
+
+  document.addEventListener('mousemove', onMouseMove);
+  document.addEventListener('mouseup', onMouseUp);
+
+  /* ---- delete image ---- */
+  const btnDelImg = el.querySelector('.btn-del-img');
+  if (btnDelImg) {
+    btnDelImg.addEventListener('mousedown', e => e.stopPropagation());
+    btnDelImg.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); removeImage(mid); });
+  }
+
+  /* ---- delete card ---- */
+  const btnDelCard = el.querySelector('.btn-del-card');
+  if (btnDelCard) {
+    btnDelCard.addEventListener('mousedown', e => e.stopPropagation());
+    btnDelCard.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); removeMemo(mid); });
+  }
+
+  /* ---- context menu: right-click to unlink ---- */
+  el.addEventListener('contextmenu', e => {
+    e.preventDefault();
+    const m = memos.find(v => v.id === mid);
+    if (!m) return;
+    const hasLink = m.linkedTo || memos.some(v => v.linkedTo === mid);
+    if (!hasLink) return;
+    unlinkAll(mid);
+  });
+
+  /* ---- textarea ---- */
+  el.querySelectorAll('textarea').forEach(ta => {
+    ta.addEventListener('input', () => updateText(mid, ta.value));
+    ta.addEventListener('mousedown', e => e.stopPropagation());
+    ta.addEventListener('paste', e => {
+      for (const item of e.clipboardData.items) {
+        if (item.type.startsWith('image/')) {
+          e.preventDefault();
+          const reader = new FileReader();
+          reader.onload = ev => {
+            const m = memos.find(v => v.id === mid);
+            if (m) { m.image = ev.target.result; m.type = 'image'; save(memos); fullRender(); }
+          };
+          reader.readAsDataURL(item.getAsFile());
+          return;
+        }
+      }
+    });
+  });
+}
+
+/* ============ canvas: dblclick to create ============ */
+$('#canvas').addEventListener('dblclick', e => {
+  if (e.target.closest('.card') || e.target.closest('#snapSvg')) return;
+  if ($('#searchBox') === document.activeElement) return;
+  const rect = $('#canvas').getBoundingClientRect();
+  const x = Math.max(PAD, Math.min(e.clientX - rect.left - CARD_W / 2, innerWidth - PAD - CARD_W));
+  const y = Math.max(HDR_H, e.clientY - rect.top - 20);
+  createMemo(x, y, '', null);
+  requestAnimationFrame(() => {
+    const all = $$('.card');
+    const ta = all[all.length - 1]?.querySelector('textarea');
+    if (ta) ta.focus();
+  });
+});
+
+/* ============ global paste ============ */
+document.addEventListener('paste', e => {
+  const active = document.activeElement;
+  if (active && (active.tagName === 'TEXTAREA' || active.tagName === 'INPUT')) return;
+  for (const item of e.clipboardData.items) {
+    if (item.type.startsWith('image/')) {
+      e.preventDefault();
+      const reader = new FileReader();
+      reader.onload = ev => createMemo(PAD, HDR_H + PAD, '', ev.target.result);
+      reader.readAsDataURL(item.getAsFile());
+      return;
+    }
+    if (item.type === 'text/plain') {
+      e.preventDefault();
+      const text = e.clipboardData.getData('text/plain');
+      if (text.trim()) createMemo(PAD, HDR_H + PAD, text, null);
+      return;
+    }
+  }
+});
+
+/* ============ file drop ============ */
+$('#canvas').addEventListener('dragover', e => {
+  if (e.dataTransfer && e.dataTransfer.types.includes('Files')) e.preventDefault();
+});
+$('#canvas').addEventListener('drop', e => {
+  if (!e.dataTransfer || !e.dataTransfer.types.includes('Files')) return;
+  const file = e.dataTransfer.files[0];
+  if (!file) return;
+  e.preventDefault(); e.stopPropagation();
+  const rect = $('#canvas').getBoundingClientRect();
+  const x = Math.max(PAD, Math.min(e.clientX - rect.left - 120, innerWidth - PAD - 240));
+  const y = Math.max(HDR_H, e.clientY - rect.top - 60);
+
+  if (file.type.startsWith('image/')) {
+    const reader = new FileReader();
+    reader.onload = ev => createMemo(x, y, '', ev.target.result);
+    reader.readAsDataURL(file);
+  } else {
+    createMemo(x, y, '', null, 'file', file.name, file.name);
+  }
+});
+
+/* ============ modal ============ */
+function closeModal() { $('#modal').classList.remove('open'); }
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+/* ============ export ============ */
+function exportTxt() {
+  if (!memos.length) { alert('没有内容'); return; }
+  const sorted = [...memos].sort((a, b) => a.created - b.created);
+  let txt = '备忘录 - ' + new Date().toLocaleString() + '\n' + '─'.repeat(30) + '\n\n';
+  sorted.forEach((m, i) => {
+    const d = new Date(m.created);
+    const ts = `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    txt += `#${i + 1}  ${ts}\n`;
+    if (m.type === 'file') txt += `[文件] ${m.fileName || '未知'}\n`;
+    else txt += `${m.text || '(空)'}\n`;
+    if (m.image) txt += '[含图片]\n';
+    txt += '\n';
+  });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([txt], { type: 'text/plain;charset=utf-8' }));
+  a.download = `备忘录_${new Date().toISOString().slice(0, 10)}.txt`;
+  a.click();
+}
+
+/* ============ search ============ */
+$('#searchBox').addEventListener('input', () => fullRender());
+
+/* ============ window resize ============ */
+window.addEventListener('resize', () => { fitCanvas(); redrawSnapLines(); });
+
+/* ============ init ============ */
+fullRender();
+
+// auto-tidy on first load if cards overlap badly (legacy data fix)
+(function autoTidyIfNeeded() {
+  if (!memos.length || memos.length < 2) return;
+  let overlapCount = 0;
+  const cards = $$('.card');
+  for (let i = 0; i < cards.length && i < 20; i++) {
+    for (let j = i + 1; j < cards.length && j < 20; j++) {
+      const a = cards[i].getBoundingClientRect();
+      const b = cards[j].getBoundingClientRect();
+      if (!(a.right < b.left || b.right < a.left || a.bottom < b.top || b.bottom < a.top)) {
+        overlapCount++;
+      }
+    }
+  }
+  if (overlapCount > 2) {
+    // Fix by computing grid layout directly (no tidy mode needed)
+    const GAP = 14;
+    const cols = Math.max(1, Math.floor(($('#canvas').offsetWidth - PAD * 2 + GAP) / (CARD_W + GAP)));
+    
+    // First pass: set all cards to absolute at a hidden position
+    $$('.card').forEach(el => {
+      el.style.position = 'absolute';
+      el.style.left = '0px';
+      el.style.top = (HDR_H + PAD) + 'px';
+      el.style.width = CARD_W + 'px';
+      el.style.height = '';
+    });
+    
+    // Second pass: measure heights, then grid
+    requestAnimationFrame(() => {
+      const rowY = {};
+      let currentY = HDR_H + PAD;
+      const maxRow = Math.ceil(memos.length / cols);
+      
+      // Pre-calculate row heights
+      const rowH = {};
+      memos.forEach((m, i) => {
+        const row = Math.floor(i / cols);
+        const el = document.querySelector(`.card[data-id="${m.id}"]`);
+        if (el) {
+          rowH[row] = Math.max(rowH[row] || 60, el.offsetHeight);
+        }
+      });
+      
+      memos.forEach((m, i) => {
+        const col = i % cols;
+        const row = Math.floor(i / cols);
+        if (!(row in rowY)) {
+          rowY[row] = currentY;
+          currentY += (rowH[row] || 60) + GAP;
+        }
+        m.x = PAD + col * (CARD_W + GAP);
+        m.y = rowY[row];
+        m.w = CARD_W; m.h = null;
+        const el = document.querySelector(`.card[data-id="${m.id}"]`);
+        if (el) {
+          el.style.left = m.x + 'px';
+          el.style.top = m.y + 'px';
+        }
+      });
+      
+      save(memos);
+      fitCanvas();
+      setTimeout(redrawSnapLines, 100);
+    });
+  }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>行测刷题计时器</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    height: 100%;
+    overflow: hidden;
+  }
+  body {
+    background: #fff;
+    color: #000;
+    font-family: -apple-system, "Microsoft YaHei", sans-serif;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+  .container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    max-width: 420px;
+    padding: 20px;
+    gap: clamp(16px, 4vh, 36px);
+  }
+
+  /* 秒数输入区域 */
+  .input-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 17px;
+  }
+  #secondsInput {
+    width: 72px;
+    padding: 8px 6px;
+    font-size: 20px;
+    text-align: center;
+    border: 1.5px solid #ccc;
+    border-radius: 8px;
+    outline: none;
+    -webkit-appearance: none;
+  }
+  #secondsInput:focus { border-color: #333; }
+  #secondsInput:disabled {
+    background: #f5f5f5;
+    color: #999;
+    cursor: not-allowed;
+  }
+
+  /* 倒计时数字 */
+  #display {
+    font-size: clamp(100px, 28vw, 180px);
+    font-weight: 900;
+    line-height: 1;
+    letter-spacing: -3px;
+    text-align: center;
+    transition: color 0.15s;
+    min-height: 1.1em;
+  }
+  #display.warning { color: #e53935; }
+
+  /* 大按钮 */
+  #goBtn {
+    width: clamp(160px, 50vw, 240px);
+    height: clamp(56px, 10vh, 72px);
+    font-size: clamp(18px, 4.5vw, 22px);
+    font-weight: 600;
+    border: none;
+    border-radius: 14px;
+    background: #111;
+    color: #fff;
+    cursor: pointer;
+    letter-spacing: 2px;
+    transition: background 0.12s, transform 0.08s;
+    -webkit-appearance: none;
+  }
+  #goBtn:active {
+    background: #333;
+    transform: scale(0.96);
+  }
+
+  /* 底部重置按钮 */
+  .bottom {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+  }
+  .hint {
+    font-size: 13px;
+    color: #aaa;
+  }
+  #resetBtn {
+    padding: 7px 28px;
+    font-size: 14px;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    background: #fff;
+    color: #333;
+    cursor: pointer;
+    -webkit-appearance: none;
+  }
+  #resetBtn:active { background: #f0f0f0; }
+
+  /* ========== 可折叠正计时器（右下角浮动） ========== */
+  .sw-wrapper {
+    position: fixed;
+    right: 16px;
+    bottom: max(16px, env(safe-area-inset-bottom, 16px));
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 8px;
+  }
+
+  /* 折叠标签按钮 */
+  .sw-tab {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    border: none;
+    background: #f0f0f0;
+    color: #555;
+    font-size: 20px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+    transition: background 0.15s, transform 0.1s;
+    -webkit-appearance: none;
+    line-height: 1;
+  }
+  .sw-tab:active { background: #e0e0e0; transform: scale(0.93); }
+
+  /* 展开面板 */
+  .sw-panel {
+    background: #fff;
+    border-radius: 16px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.12);
+    padding: 20px 28px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    transform-origin: bottom right;
+    transition: opacity 0.2s, transform 0.2s;
+    opacity: 0;
+    transform: scale(0.85) translateY(8px);
+    pointer-events: none;
+  }
+  .sw-panel.open {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+    pointer-events: auto;
+  }
+  .sw-panel .sw-label {
+    font-size: 12px;
+    color: #aaa;
+    letter-spacing: 1px;
+  }
+  .sw-panel .sw-time {
+    font-size: clamp(32px, 8vw, 48px);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 1px;
+    color: #222;
+  }
+  .sw-panel .sw-btns {
+    display: flex;
+    gap: 10px;
+  }
+  .sw-panel .sw-btn {
+    padding: 8px 20px;
+    font-size: 14px;
+    font-weight: 500;
+    border-radius: 10px;
+    border: none;
+    cursor: pointer;
+    -webkit-appearance: none;
+    transition: background 0.12s, transform 0.08s;
+  }
+  .sw-panel .sw-btn:active { transform: scale(0.95); }
+  .sw-btn-start {
+    background: #111;
+    color: #fff;
+  }
+  .sw-btn-start:active { background: #333; }
+  .sw-btn-pause {
+    background: #ff9800;
+    color: #fff;
+  }
+  .sw-btn-pause:active { background: #e68a00; }
+  .sw-btn-reset {
+    background: #f0f0f0;
+    color: #555;
+  }
+  .sw-btn-reset:active { background: #e0e0e0; }
+
+  /* 安全区域适配 */
+  @supports (padding-bottom: env(safe-area-inset-bottom)) {
+    .container {
+      padding-bottom: max(20px, env(safe-area-inset-bottom));
+    }
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <!-- 1. 秒数输入 -->
+  <div class="input-row">
+    <input type="number" id="secondsInput" value="30" min="1" inputmode="numeric" />
+    <span>秒</span>
+  </div>
+
+  <!-- 2. 倒计时数字 -->
+  <div id="display">准备</div>
+
+  <!-- 3. 大按钮 -->
+  <button id="goBtn">开始计时</button>
+
+  <!-- 4. 重置 + 提示 -->
+  <div class="bottom">
+    <button id="resetBtn">重置</button>
+    <div class="hint">按空格键 或 点击上方按钮</div>
+  </div>
+</div>
+
+<!-- 可折叠正计时器 -->
+<div class="sw-wrapper">
+  <div class="sw-panel" id="swPanel">
+    <div class="sw-label">正计时</div>
+    <div class="sw-time" id="swDisplay">00:00</div>
+    <div class="sw-btns">
+      <button class="sw-btn sw-btn-start" id="swStartBtn">开始</button>
+      <button class="sw-btn sw-btn-reset" id="swResetBtn">归零</button>
+    </div>
+  </div>
+  <button class="sw-tab" id="swTab" title="正计时器">&#9201;</button>
+</div>
+
+<script>
+// ========== 倒计时 全局状态 ==========
+let totalSeconds = 30;
+let remaining = 0;
+let timerRAF = null;
+let lastTick = 0;
+let running = false;
+let beepedSeconds = new Set();
+
+const display  = document.getElementById('display');
+const inputEl  = document.getElementById('secondsInput');
+const goBtn    = document.getElementById('goBtn');
+const resetBtn = document.getElementById('resetBtn');
+const hintEl   = document.querySelector('.hint');
+
+// ========== Web Audio API 声音引擎 ==========
+let audioCtx = null;
+
+function ensureAudioCtx() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+}
+
+function beep(freq, dur, vol) {
+  ensureAudioCtx();
+  const osc  = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = 'sine';
+  osc.frequency.value = freq;
+  gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur / 1000);
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.start(audioCtx.currentTime);
+  osc.stop(audioCtx.currentTime + dur / 1000);
+}
+
+function playTick() { beep(900, 100, 0.3); }
+
+function playDoubleBeep() {
+  ensureAudioCtx();
+  const t = audioCtx.currentTime;
+  for (let i = 0; i < 2; i++) {
+    const s = t + i * 0.15;
+    const osc  = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = 900;
+    gain.gain.setValueAtTime(0.5, s);
+    gain.gain.exponentialRampToValueAtTime(0.001, s + 0.1);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(s);
+    osc.stop(s + 0.1);
+  }
+}
+
+// ========== 倒计时核心 ==========
+function getCurrentSecond() { return Math.ceil(remaining / 1000); }
+
+function tick(now) {
+  if (!running) return;
+  if (lastTick === 0) { lastTick = now; timerRAF = requestAnimationFrame(tick); return; }
+
+  const delta = now - lastTick;
+  lastTick = now;
+  remaining -= delta;
+
+  if (remaining <= 0) {
+    remaining = 0;
+    running = false;
+    display.textContent = '0';
+    display.classList.remove('warning');
+    playDoubleBeep();
+    setTimeout(() => startCountdown(totalSeconds), 600);
+    return;
+  }
+
+  const sec = getCurrentSecond();
+  display.textContent = sec;
+  if (sec <= 5 && sec >= 1) {
+    display.classList.add('warning');
+    if (!beepedSeconds.has(sec)) { beepedSeconds.add(sec); playTick(); }
+  } else {
+    display.classList.remove('warning');
+  }
+  timerRAF = requestAnimationFrame(tick);
+}
+
+function startCountdown(secs) {
+  if (running) stopCountdown();
+  ensureAudioCtx();
+  totalSeconds = secs;
+  remaining = secs * 1000;
+  beepedSeconds = new Set();
+  running = true;
+  lastTick = 0;
+  inputEl.disabled = true;
+  goBtn.textContent = '重新开始';
+  hintEl.textContent = '再按一次可重新计时';
+  display.classList.remove('warning');
+  display.textContent = secs;
+  if (secs <= 5) display.classList.add('warning');
+  timerRAF = requestAnimationFrame(tick);
+}
+
+function stopCountdown() {
+  running = false;
+  if (timerRAF) { cancelAnimationFrame(timerRAF); timerRAF = null; }
+  lastTick = 0;
+}
+
+function resetToIdle() {
+  stopCountdown();
+  display.textContent = '准备';
+  display.classList.remove('warning');
+  inputEl.disabled = false;
+  goBtn.textContent = '开始计时';
+  hintEl.textContent = '按空格键 或 点击上方按钮';
+}
+
+// ========== 倒计时交互 ==========
+function triggerStart() {
+  if (document.activeElement === inputEl) inputEl.blur();
+  const val = parseInt(inputEl.value, 10);
+  if (isNaN(val) || val <= 0) {
+    inputEl.value = 30;
+    hintEl.textContent = '请输入有效秒数，已重置为30秒';
+    display.textContent = '准备';
+    return;
+  }
+  resetToIdle();
+  startCountdown(val);
+}
+
+document.addEventListener('keydown', function(e) {
+  if (e.code === 'Space' || e.key === ' ') {
+    e.preventDefault();
+    triggerStart();
+  }
+});
+
+goBtn.addEventListener('click', function(e) {
+  e.preventDefault();
+  triggerStart();
+});
+
+resetBtn.addEventListener('click', function(e) {
+  e.preventDefault();
+  resetToIdle();
+});
+
+inputEl.addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') { e.preventDefault(); inputEl.blur(); }
+});
+
+// ========== 正计时器（秒表） ==========
+(function() {
+  const tab     = document.getElementById('swTab');
+  const panel   = document.getElementById('swPanel');
+  const timeEl  = document.getElementById('swDisplay');
+  const startBt = document.getElementById('swStartBtn');
+  const resetBt = document.getElementById('swResetBtn');
+
+  let swRunning = false;
+  let swElapsed = 0;       // 已累计毫秒
+  let swLastTick = 0;
+  let swRAF = null;
+
+  // 折叠/展开切换
+  tab.addEventListener('click', function() {
+    panel.classList.toggle('open');
+  });
+
+  // 格式化毫秒 → MM:SS
+  function fmtTime(ms) {
+    const totalSec = Math.floor(ms / 1000);
+    const m = Math.floor(totalSec / 60);
+    const s = totalSec % 60;
+    return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+  }
+
+  // 计时帧循环
+  function swTick(now) {
+    if (!swRunning) return;
+    if (swLastTick === 0) { swLastTick = now; swRAF = requestAnimationFrame(swTick); return; }
+    swElapsed += now - swLastTick;
+    swLastTick = now;
+    timeEl.textContent = fmtTime(swElapsed);
+    swRAF = requestAnimationFrame(swTick);
+  }
+
+  // 开始 / 暂停 切换
+  startBt.addEventListener('click', function() {
+    if (swRunning) {
+      // 暂停
+      swRunning = false;
+      if (swRAF) { cancelAnimationFrame(swRAF); swRAF = null; }
+      swLastTick = 0;
+      startBt.textContent = '继续';
+      startBt.className = 'sw-btn sw-btn-start';
+    } else {
+      // 开始 / 继续
+      ensureAudioCtx();
+      swRunning = true;
+      swLastTick = 0;
+      startBt.textContent = '暂停';
+      startBt.className = 'sw-btn sw-btn-pause';
+      swRAF = requestAnimationFrame(swTick);
+    }
+  });
+
+  // 归零
+  resetBt.addEventListener('click', function() {
+    swRunning = false;
+    if (swRAF) { cancelAnimationFrame(swRAF); swRAF = null; }
+    swLastTick = 0;
+    swElapsed = 0;
+    timeEl.textContent = '00:00';
+    startBt.textContent = '开始';
+    startBt.className = 'sw-btn sw-btn-start';
+  });
+})();
+</script>
+
+</body>
+</html>

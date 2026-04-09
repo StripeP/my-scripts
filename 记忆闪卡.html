@@ -1,0 +1,1037 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>记忆闪卡</title>
+<style>
+/* ========== 基础重置与主题变量 ========== */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#f0f2f5;--bg2:#ffffff;--bg3:#f7f8fa;--text:#1a1a2e;--text2:#555;--text3:#999;
+  --accent:#4f6ef7;--accent-hover:#3b5de7;--accent-light:rgba(79,110,247,.1);
+  --danger:#e74c3c;--danger-hover:#c0392b;--success:#27ae60;
+  --border:#e0e0e0;--shadow:0 2px 12px rgba(0,0,0,.08);
+  --shadow-hover:0 6px 24px rgba(0,0,0,.12);--radius:12px;--radius-sm:8px;
+  --toast-bg:#333;--toast-text:#fff;--overlay:rgba(0,0,0,.45);
+  --transition:all .25s ease;
+}
+[data-theme="dark"]{
+  --bg:#1a1a2e;--bg2:#16213e;--bg3:#1e2a4a;--text:#e0e0e0;--text2:#aaa;--text3:#666;
+  --accent:#6c8cff;--accent-hover:#8aa4ff;--accent-light:rgba(108,140,255,.15);
+  --danger:#ff6b6b;--danger-hover:#ee5a5a;--success:#2ecc71;
+  --border:#2a3a5c;--shadow:0 2px 12px rgba(0,0,0,.3);
+  --shadow-hover:0 6px 24px rgba(0,0,0,.4);--toast-bg:#eee;--toast-text:#111;
+  --overlay:rgba(0,0,0,.65);
+}
+html{font-size:16px}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif;
+  background:var(--bg);color:var(--text);line-height:1.6;
+  min-height:100vh;transition:background .3s,color .3s;
+}
+button{font-family:inherit;cursor:pointer;border:none;outline:none;font-size:.875rem}
+button:active{transform:scale(.97)}
+input,textarea{font-family:inherit;font-size:.875rem}
+
+/* ========== 布局 ========== */
+.app{max-width:800px;margin:0 auto;padding:24px 20px 40px}
+.header{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px}
+.header h1{font-size:1.5rem;font-weight:700;letter-spacing:-.5px}
+.header-actions{display:flex;gap:8px;flex-wrap:wrap}
+
+/* ========== 按钮通用 ========== */
+.btn{
+  display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:var(--radius-sm);
+  background:var(--bg2);color:var(--text);border:1px solid var(--border);transition:var(--transition);
+  white-space:nowrap;font-size:.8rem;
+}
+.btn:hover{box-shadow:var(--shadow);transform:translateY(-1px)}
+.btn-primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+.btn-primary:hover{background:var(--accent-hover)}
+.btn-danger{background:var(--danger);color:#fff;border-color:var(--danger)}
+.btn-danger:hover{background:var(--danger-hover)}
+.btn-sm{padding:5px 10px;font-size:.75rem}
+.btn-icon{padding:6px 10px;font-size:.9rem}
+
+/* ========== 进度条区域 ========== */
+.progress-bar{
+  background:var(--bg2);border-radius:var(--radius-sm);padding:12px 16px;
+  display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;
+  margin-bottom:20px;border:1px solid var(--border);
+}
+.progress-bar .stat{font-size:.8rem;color:var(--text2)}
+.progress-bar .stat strong{color:var(--accent);font-weight:600}
+.progress-bar .mode-tag{
+  font-size:.7rem;background:var(--accent-light);color:var(--accent);
+  padding:2px 8px;border-radius:99px;
+}
+
+/* ========== 闪卡容器 ========== */
+.card-area{display:flex;flex-direction:column;align-items:center;gap:16px}
+.card-wrapper{
+  width:100%;max-width:520px;height:280px;perspective:1000px;cursor:pointer;
+}
+.card-inner{
+  position:relative;width:100%;height:100%;
+  transition:transform .6s cubic-bezier(.4,.2,.2,1);transform-style:preserve-3d;
+}
+.card-inner.flipped{transform:rotateY(180deg)}
+.card-face{
+  position:absolute;width:100%;height:100%;
+  backface-visibility:hidden;-webkit-backface-visibility:hidden;
+  border-radius:var(--radius);display:flex;align-items:center;justify-content:center;
+  padding:32px;text-align:center;font-size:1.25rem;font-weight:500;
+  box-shadow:var(--shadow);transition:box-shadow .25s;
+  word-break:break-word;overflow-y:auto;
+}
+.card-front{background:var(--bg2);color:var(--text);border:1px solid var(--border)}
+.card-front::after{content:"点击翻转";position:absolute;bottom:12px;font-size:.7rem;color:var(--text3)}
+.card-back{
+  background:linear-gradient(135deg,var(--accent),#7c5ce0);color:#fff;
+  transform:rotateY(180deg);
+}
+.card-back::after{content:"点击翻回";position:absolute;bottom:12px;font-size:.7rem;opacity:.7}
+.card-wrapper:hover .card-face{box-shadow:var(--shadow-hover)}
+
+/* ========== 卡片导航 ========== */
+.card-nav{display:flex;align-items:center;gap:12px}
+.card-nav .pos{font-size:.8rem;color:var(--text2);min-width:60px;text-align:center}
+
+/* ========== 操作栏 ========== */
+.card-actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:4px}
+
+/* ========== 空状态 ========== */
+.empty-state{
+  text-align:center;padding:60px 20px;color:var(--text3);
+}
+.empty-state .icon{font-size:3rem;margin-bottom:12px;opacity:.5}
+.empty-state p{font-size:.9rem;margin-bottom:16px}
+
+/* ========== 标签页 ========== */
+.tabs{display:flex;gap:4px;margin-bottom:20px;background:var(--bg2);border-radius:var(--radius-sm);padding:4px;border:1px solid var(--border)}
+.tab{
+  flex:1;text-align:center;padding:8px 12px;border-radius:var(--radius-sm);
+  background:transparent;color:var(--text2);font-size:.85rem;transition:var(--transition);
+}
+.tab.active{background:var(--accent);color:#fff;box-shadow:0 2px 8px rgba(79,110,247,.3)}
+.tab:hover:not(.active){background:var(--accent-light)}
+
+/* ========== 列表项 ========== */
+.item-list{display:flex;flex-direction:column;gap:8px}
+.item-row{
+  display:flex;align-items:center;gap:12px;background:var(--bg2);
+  padding:12px 16px;border-radius:var(--radius-sm);border:1px solid var(--border);
+  transition:var(--transition);font-size:.85rem;
+}
+.item-row:hover{box-shadow:var(--shadow);transform:translateY(-1px)}
+.item-row .idx{color:var(--text3);min-width:28px;font-size:.75rem}
+.item-row .content{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.item-row .arrow{color:var(--text3);font-size:.7rem}
+.item-row .back-text{color:var(--text2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.item-row .actions{display:flex;gap:6px}
+
+/* ========== 弹窗 ========== */
+.modal-overlay{
+  position:fixed;top:0;left:0;width:100%;height:100%;background:var(--overlay);
+  z-index:1000;display:flex;align-items:center;justify-content:center;
+  opacity:0;visibility:hidden;transition:opacity .2s,visibility .2s;
+}
+.modal-overlay.show{opacity:1;visibility:visible}
+.modal{
+  background:var(--bg2);border-radius:var(--radius);padding:24px;
+  width:90%;max-width:480px;max-height:85vh;overflow-y:auto;
+  box-shadow:0 8px 40px rgba(0,0,0,.2);transform:translateY(20px);transition:transform .25s;
+}
+.modal-overlay.show .modal{transform:translateY(0)}
+.modal h2{font-size:1.1rem;margin-bottom:16px;font-weight:600}
+.modal textarea{
+  width:100%;min-height:180px;padding:12px;border:1px solid var(--border);
+  border-radius:var(--radius-sm);background:var(--bg3);color:var(--text);
+  resize:vertical;line-height:1.8;font-size:.85rem;
+}
+.modal textarea:focus{outline:none;border-color:var(--accent)}
+.modal .hint{font-size:.75rem;color:var(--text3);margin-top:8px}
+.modal .form-row{margin-bottom:14px}
+.modal .form-row label{display:block;font-size:.8rem;color:var(--text2);margin-bottom:4px}
+.modal .form-row input{
+  width:100%;padding:8px 12px;border:1px solid var(--border);
+  border-radius:var(--radius-sm);background:var(--bg3);color:var(--text);
+}
+.modal .form-row input:focus{outline:none;border-color:var(--accent)}
+.modal-footer{display:flex;gap:8px;justify-content:flex-end;margin-top:20px}
+
+/* ========== Toast ========== */
+.toast-container{position:fixed;top:20px;right:20px;z-index:2000;display:flex;flex-direction:column;gap:8px}
+.toast{
+  padding:10px 20px;border-radius:var(--radius-sm);font-size:.8rem;
+  background:var(--toast-bg);color:var(--toast-text);
+  box-shadow:0 4px 16px rgba(0,0,0,.15);
+  transform:translateX(120%);transition:transform .3s ease;
+}
+.toast.show{transform:translateX(0)}
+.toast.success{background:var(--success);color:#fff}
+.toast.error{background:var(--danger);color:#fff}
+
+/* ========== 隐藏辅助 ========== */
+.hidden{display:none!important}
+
+/* ========== 滚动条 ========== */
+::-webkit-scrollbar{width:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+
+/* ========== 编辑弹窗特殊样式 ========== */
+.edit-modal .modal{max-width:400px}
+
+/* ========== 设置面板样式 ========== */
+.settings-list{display:flex;flex-direction:column;gap:4px}
+.settings-item{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:12px 16px;border-radius:var(--radius-sm);
+  transition:background .15s;cursor:default;
+}
+.settings-item:hover{background:var(--bg3)}
+.settings-item .label{font-size:.85rem;color:var(--text)}
+.settings-item .desc{font-size:.7rem;color:var(--text3);margin-top:2px}
+.settings-item .val{font-size:.75rem;color:var(--text3);margin-top:2px}
+.settings-sep{height:1px;background:var(--border);margin:4px 0}
+.settings-danger{color:var(--danger)}
+.settings-danger .desc{color:var(--danger);opacity:.7}
+</style>
+</head>
+<body>
+
+<div class="app">
+  <!-- 顶部标题栏 -->
+  <div class="header">
+    <h1>🗂️ 记忆闪卡</h1>
+    <div class="header-actions">
+      <button class="btn" onclick="openImportModal()">📥 导入闪卡</button>
+      <button class="btn btn-icon" onclick="toggleTheme()" id="themeBtn" title="切换主题">🌙</button>
+      <button class="btn btn-icon" onclick="openModal('settingsOverlay')" title="设置">⚙️</button>
+    </div>
+  </div>
+
+  <!-- 标签页 -->
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('learn')">🃏 学习</button>
+    <button class="tab" onclick="switchTab('pending')">📋 待学习库</button>
+    <button class="tab" onclick="switchTab('mastered')">✅ 已掌握库</button>
+  </div>
+
+  <!-- 进度信息 -->
+  <div class="progress-bar">
+    <span class="stat">待学习: <strong id="pendingCount">0</strong></span>
+    <span class="stat">已掌握: <strong id="masteredCount">0</strong></span>
+    <span class="stat" id="currentPos" style="display:none">当前: <strong id="posText">0/0</strong></span>
+  </div>
+
+  <!-- ========== 学习页 ========== -->
+  <div id="learnView">
+    <div class="card-area" id="cardArea">
+      <!-- 有卡时渲染卡片 -->
+    </div>
+  </div>
+
+  <!-- ========== 待学习库 ========== -->
+  <div id="pendingView" class="hidden">
+    <div id="pendingList"></div>
+  </div>
+
+  <!-- ========== 已掌握库 ========== -->
+  <div id="masteredView" class="hidden">
+    <div id="masteredList"></div>
+  </div>
+
+</div>
+
+<!-- ========== 批量导入弹窗 ========== -->
+<div class="modal-overlay" id="importOverlay">
+  <div class="modal">
+    <h2>📥 批量导入闪卡</h2>
+    <div class="form-row">
+      <textarea id="importText" placeholder="每行一张卡片，使用 | 分隔正面和背面&#10;例如：&#10;苹果 | Apple&#10;香蕉 | Banana"></textarea>
+      <p class="hint">格式：正面内容|背面内容，每行一张，空行自动忽略</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal('importOverlay')">取消</button>
+      <button class="btn btn-primary" onclick="doImport()">导入</button>
+    </div>
+  </div>
+</div>
+
+<!-- ========== 导入备份弹窗 ========== -->
+<div class="modal-overlay" id="backupImportOverlay">
+  <div class="modal">
+    <h2>📥 导入备份文件</h2>
+    <div class="form-row">
+      <p style="font-size:.85rem;color:var(--text2);margin-bottom:12px">选择导入方式：</p>
+      <input type="file" id="backupFile" accept=".json" style="margin-bottom:12px">
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal('backupImportOverlay')">取消</button>
+      <button class="btn" onclick="doBackupImport('overwrite')">覆盖导入</button>
+      <button class="btn btn-primary" onclick="doBackupImport('merge')">合并导入</button>
+    </div>
+  </div>
+</div>
+
+<!-- ========== 编辑弹窗 ========== -->
+<div class="modal-overlay edit-modal" id="editOverlay">
+  <div class="modal">
+    <h2>✏️ 编辑闪卡</h2>
+    <div class="form-row">
+      <label>正面</label>
+      <input type="text" id="editFront">
+    </div>
+    <div class="form-row">
+      <label>背面</label>
+      <input type="text" id="editBack">
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal('editOverlay')">取消</button>
+      <button class="btn btn-primary" onclick="saveEdit()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- ========== 确认弹窗 ========== -->
+<div class="modal-overlay" id="confirmOverlay">
+  <div class="modal" style="max-width:360px;text-align:center">
+    <p id="confirmMsg" style="font-size:.95rem;margin-bottom:20px;line-height:1.7"></p>
+    <div class="modal-footer" style="justify-content:center">
+      <button class="btn" onclick="closeConfirm()">取消</button>
+      <button class="btn btn-danger" id="confirmOk">确认</button>
+    </div>
+  </div>
+</div>
+
+<!-- ========== 设置弹窗 ========== -->
+<div class="modal-overlay" id="settingsOverlay">
+  <div class="modal" style="max-width:420px">
+    <h2>⚙️ 设置</h2>
+    <div class="settings-list">
+      <div class="settings-item">
+        <div>
+          <div class="label">🎨 外观主题</div>
+          <div class="desc" id="settingsThemeDesc">跟随系统</div>
+        </div>
+        <button class="btn btn-sm" onclick="toggleTheme()">切换主题</button>
+      </div>
+      <div class="settings-sep"></div>
+      <div class="settings-item">
+        <div>
+          <div class="label">↩️ 重置主题</div>
+          <div class="desc">清除手动设置，恢复为跟随系统</div>
+        </div>
+        <button class="btn btn-sm" onclick="resetTheme()">重置</button>
+      </div>
+      <div class="settings-sep"></div>
+      <div class="settings-item">
+        <div>
+          <div class="label">📤 导出备份</div>
+          <div class="desc">将所有闪卡导出为 JSON 文件</div>
+        </div>
+        <button class="btn btn-sm" onclick="exportBackup()">导出</button>
+      </div>
+      <div class="settings-sep"></div>
+      <div class="settings-item">
+        <div>
+          <div class="label">📥 导入备份</div>
+          <div class="desc">从 JSON 文件恢复闪卡数据</div>
+        </div>
+        <button class="btn btn-sm" onclick="openBackupImportModal()">导入</button>
+      </div>
+      <div class="settings-sep"></div>
+      <div class="settings-item settings-danger">
+        <div>
+          <div class="label">🗑️ 清空所有数据</div>
+          <div class="desc">删除全部闪卡，不可恢复</div>
+        </div>
+        <button class="btn btn-sm btn-danger" onclick="clearAllData()">清空</button>
+      </div>
+    </div>
+    <div class="modal-footer" style="margin-top:20px">
+      <button class="btn" onclick="closeModal('settingsOverlay')">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast容器 -->
+<div class="toast-container" id="toastContainer"></div>
+
+<script>
+/* ========================================================================
+   数据层：localStorage 读写
+   ======================================================================== */
+var STORAGE_KEY = 'memo_flashcards_v1';
+var THEME_KEY = 'memo_theme';
+
+/* 读取全部数据 */
+function loadData() {
+  try {
+    var raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return { pending: [], mastered: [] };
+    var d = JSON.parse(raw);
+    // 容错：确保数组存在
+    if (!Array.isArray(d.pending)) d.pending = [];
+    if (!Array.isArray(d.mastered)) d.mastered = [];
+    return d;
+  } catch (e) {
+    // JSON 解析失败时返回空数据
+    console.warn('数据读取失败，已重置:', e);
+    return { pending: [], mastered: [] };
+  }
+}
+
+/* 写入全部数据 */
+function saveData(data) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  } catch (e) {
+    // localStorage 满或写入失败
+    if (e.name === 'QuotaExceededError' || e.code === 22) {
+      showToast('存储空间已满，请导出备份后清理数据', 'error');
+    } else {
+      showToast('数据保存失败: ' + e.message, 'error');
+    }
+  }
+}
+
+/* ========================================================================
+   状态
+   ======================================================================== */
+var state = {
+  data: loadData(),            // { pending: [{front,back,id}], mastered: [...] }
+  currentTab: 'learn',         // learn | pending | mastered
+  currentIndex: 0,             // 当前学习位置
+  isFlipped: false,            // 卡片是否翻转
+  editId: null,                // 正在编辑的卡片 id
+  editSource: null,            // 'pending' | 'mastered'
+  confirmCallback: null        // 确认弹窗回调
+};
+
+/* 生成唯一 ID */
+function genId() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
+
+/* ========================================================================
+   主题
+   ======================================================================== */
+function initTheme() {
+  var saved = localStorage.getItem(THEME_KEY);
+  if (saved) {
+    document.documentElement.setAttribute('data-theme', saved);
+    updateThemeBtn(saved);
+  } else {
+    // 跟随系统
+    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      document.documentElement.setAttribute('data-theme', 'dark');
+      updateThemeBtn('dark');
+    }
+  }
+}
+
+function toggleTheme() {
+  var current = document.documentElement.getAttribute('data-theme');
+  var next = current === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  localStorage.setItem(THEME_KEY, next);
+  updateThemeBtn(next);
+}
+
+function updateThemeBtn(theme) {
+  document.getElementById('themeBtn').textContent = theme === 'dark' ? '☀️' : '🌙';
+  updateSettingsDesc();
+}
+
+/* 重置主题为跟随系统 */
+function resetTheme() {
+  localStorage.removeItem(THEME_KEY);
+  if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+    document.documentElement.setAttribute('data-theme', 'dark');
+  } else {
+    document.documentElement.removeAttribute('data-theme');
+  }
+  updateThemeBtn(document.documentElement.getAttribute('data-theme') || 'light');
+  showToast('主题已重置为跟随系统', 'success');
+}
+
+/* 更新设置面板中的主题描述 */
+function updateSettingsDesc() {
+  var descEl = document.getElementById('settingsThemeDesc');
+  if (!descEl) return;
+  var saved = localStorage.getItem(THEME_KEY);
+  descEl.textContent = saved ? (saved === 'dark' ? '当前：深色模式' : '当前：浅色模式') : '跟随系统';
+}
+
+/* ========================================================================
+   Toast 提示
+   ======================================================================== */
+function showToast(msg, type) {
+  type = type || '';
+  var container = document.getElementById('toastContainer');
+  var el = document.createElement('div');
+  el.className = 'toast' + (type ? ' ' + type : '');
+  el.textContent = msg;
+  container.appendChild(el);
+  // 触发动画
+  requestAnimationFrame(function() {
+    el.classList.add('show');
+  });
+  setTimeout(function() {
+    el.classList.remove('show');
+    setTimeout(function() { el.remove(); }, 300);
+  }, 2500);
+}
+
+/* ========================================================================
+   弹窗控制
+   ======================================================================== */
+function openModal(id) {
+  document.getElementById(id).classList.add('show');
+}
+function closeModal(id) {
+  document.getElementById(id).classList.remove('show');
+}
+
+/* 点击遮罩关闭（非危险操作弹窗） */
+document.querySelectorAll('.modal-overlay').forEach(function(overlay) {
+  overlay.addEventListener('click', function(e) {
+    if (e.target === overlay && overlay.id !== 'confirmOverlay') {
+      overlay.classList.remove('show');
+    }
+  });
+});
+
+/* 确认弹窗 */
+function showConfirm(msg, callback) {
+  document.getElementById('confirmMsg').textContent = msg;
+  state.confirmCallback = callback;
+  var okBtn = document.getElementById('confirmOk');
+  // 移除旧监听器
+  var newBtn = okBtn.cloneNode(true);
+  okBtn.parentNode.replaceChild(newBtn, okBtn);
+  newBtn.id = 'confirmOk';
+  newBtn.addEventListener('click', function() {
+    closeModal('confirmOverlay');
+    if (typeof state.confirmCallback === 'function') {
+      state.confirmCallback();
+      state.confirmCallback = null;
+    }
+  });
+  openModal('confirmOverlay');
+}
+function closeConfirm() {
+  closeModal('confirmOverlay');
+  state.confirmCallback = null;
+}
+
+/* ========================================================================
+   标签页切换
+   ======================================================================== */
+function switchTab(tab) {
+  state.currentTab = tab;
+  // 标签高亮
+  document.querySelectorAll('.tab').forEach(function(t, i) {
+    t.classList.toggle('active', ['learn','pending','mastered'][i] === tab);
+  });
+  // 视图切换
+  document.getElementById('learnView').classList.toggle('hidden', tab !== 'learn');
+  document.getElementById('pendingView').classList.toggle('hidden', tab !== 'pending');
+  document.getElementById('masteredView').classList.toggle('hidden', tab !== 'mastered');
+  render();
+}
+
+/* ========================================================================
+   渲染
+   ======================================================================== */
+function render() {
+  updateProgress();
+  if (state.currentTab === 'learn') renderLearn();
+  else if (state.currentTab === 'pending') renderPending();
+  else if (state.currentTab === 'mastered') renderMastered();
+}
+
+/* 更新进度信息 */
+function updateProgress() {
+  var d = state.data;
+  document.getElementById('pendingCount').textContent = d.pending.length;
+  document.getElementById('masteredCount').textContent = d.mastered.length;
+}
+
+/* ---------- 学习页渲染 ---------- */
+function renderLearn() {
+  var area = document.getElementById('cardArea');
+  var pending = state.data.pending;
+  var posEl = document.getElementById('currentPos');
+  var posText = document.getElementById('posText');
+
+  if (pending.length === 0) {
+    posEl.style.display = 'none';
+    area.innerHTML = '<div class="empty-state"><div class="icon">📭</div><p>暂无待学习的闪卡</p><button class="btn btn-primary" onclick="openImportModal()">批量导入</button></div>';
+    return;
+  }
+
+  // 确保索引合法
+  if (state.currentIndex >= pending.length) state.currentIndex = pending.length - 1;
+  if (state.currentIndex < 0) state.currentIndex = 0;
+
+  var card = pending[state.currentIndex];
+  posEl.style.display = '';
+  posText.textContent = (state.currentIndex + 1) + '/' + pending.length;
+
+  area.innerHTML =
+    '<div class="card-wrapper" ondblclick="openEditCard(\'' + card.id + '\',\'pending\')">' +
+      '<div class="card-inner' + (state.isFlipped ? ' flipped' : '') + '" onclick="flipCard()">' +
+        '<div class="card-face card-front">' + escHtml(card.front) + '</div>' +
+        '<div class="card-face card-back">' + escHtml(card.back) + '</div>' +
+      '</div>' +
+    '</div>' +
+    '<div class="card-nav">' +
+      '<button class="btn btn-icon" onclick="prevCard()">⬅️</button>' +
+      '<span class="pos">' + (state.currentIndex + 1) + ' / ' + pending.length + '</span>' +
+      '<button class="btn btn-icon" onclick="nextCard()">➡️</button>' +
+    '</div>' +
+    '<div class="card-actions">' +
+      '<button class="btn" onclick="shuffleCards()">🔀 打乱卡片</button>' +
+      '<button class="btn" onclick="openEditCard(\'' + card.id + '\',\'pending\')">✏️ 编辑</button>' +
+      '<button class="btn btn-primary" onclick="markMastered()">✅ 已掌握</button>' +
+    '</div>';
+}
+
+/* 翻转卡片 */
+function flipCard() {
+  state.isFlipped = !state.isFlipped;
+  var inner = document.querySelector('.card-inner');
+  if (inner) inner.classList.toggle('flipped', state.isFlipped);
+}
+
+/* 上一张 */
+function prevCard() {
+  if (state.data.pending.length === 0) return;
+  state.isFlipped = false;
+  state.currentIndex--;
+  if (state.currentIndex < 0) state.currentIndex = state.data.pending.length - 1;
+  renderLearn();
+}
+
+/* 下一张 */
+function nextCard() {
+  if (state.data.pending.length === 0) return;
+  state.isFlipped = false;
+  state.currentIndex++;
+  if (state.currentIndex >= state.data.pending.length) state.currentIndex = 0;
+  renderLearn();
+}
+
+/* 标记已掌握 */
+function markMastered() {
+  var pending = state.data.pending;
+  if (pending.length === 0) return;
+  var card = pending.splice(state.currentIndex, 1)[0];
+  state.data.mastered.push(card);
+  // 调整索引
+  if (state.currentIndex >= pending.length) state.currentIndex = Math.max(0, pending.length - 1);
+  state.isFlipped = false;
+  saveData(state.data);
+  updateProgress();
+  showToast('已移入掌握库 ✓', 'success');
+  renderLearn();
+}
+
+/* 打乱待学习卡片顺序 */
+function shuffleCards() {
+  if (state.data.pending.length <= 1) {
+    showToast('卡片数量不足，无需打乱', 'error');
+    return;
+  }
+  shuffleArray(state.data.pending);
+  state.currentIndex = 0;
+  state.isFlipped = false;
+  saveData(state.data);
+  showToast('卡片已打乱', 'success');
+  renderLearn();
+  updateProgress();
+}
+
+/* Fisher-Yates 洗牌 */
+function shuffleArray(arr) {
+  for (var i = arr.length - 1; i > 0; i--) {
+    var j = Math.floor(Math.random() * (i + 1));
+    var tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp;
+  }
+}
+
+/* ---------- 待学习库渲染 ---------- */
+function renderPending() {
+  var list = document.getElementById('pendingList');
+  var pending = state.data.pending;
+  if (pending.length === 0) {
+    list.innerHTML = '<div class="empty-state"><div class="icon">📭</div><p>待学习库为空</p></div>';
+    return;
+  }
+  var html = '<div class="item-list">';
+  pending.forEach(function(card, i) {
+    html += '<div class="item-row">' +
+      '<span class="idx">#' + (i + 1) + '</span>' +
+      '<span class="content">' + escHtml(card.front) + '</span>' +
+      '<span class="arrow">→</span>' +
+      '<span class="back-text">' + escHtml(card.back) + '</span>' +
+      '<span class="actions">' +
+        '<button class="btn btn-sm" onclick="openEditCard(\'' + card.id + '\',\'pending\')">✏️</button>' +
+        '<button class="btn btn-sm btn-danger" onclick="deletePending(\'' + card.id + '\')">🗑️</button>' +
+      '</span>' +
+    '</div>';
+  });
+  html += '</div>';
+  list.innerHTML = html;
+}
+
+/* 待学习库删除单张 */
+function deletePending(id) {
+  showConfirm('确定删除这张闪卡吗？', function() {
+    state.data.pending = state.data.pending.filter(function(c) { return c.id !== id; });
+    if (state.currentIndex >= state.data.pending.length) state.currentIndex = Math.max(0, state.data.pending.length - 1);
+    saveData(state.data);
+    showToast('已删除', 'success');
+    render();
+  });
+}
+
+/* ---------- 已掌握库渲染 ---------- */
+function renderMastered() {
+  var list = document.getElementById('masteredList');
+  var mastered = state.data.mastered;
+  var actionsHtml = '';
+  if (mastered.length > 0) {
+    actionsHtml = '<div style="margin-bottom:12px;display:flex;gap:8px">' +
+      '<button class="btn btn-sm" onclick="restoreAllMastered()">↩️ 全部还原</button>' +
+      '<button class="btn btn-sm btn-danger" onclick="clearMastered()">🗑️ 一键清空</button>' +
+    '</div>';
+  }
+  if (mastered.length === 0) {
+    list.innerHTML = actionsHtml + '<div class="empty-state"><div class="icon">✅</div><p>已掌握库为空</p></div>';
+    return;
+  }
+  var html = actionsHtml + '<div class="item-list">';
+  mastered.forEach(function(card, i) {
+    html += '<div class="item-row">' +
+      '<span class="idx">#' + (i + 1) + '</span>' +
+      '<span class="content">' + escHtml(card.front) + '</span>' +
+      '<span class="arrow">→</span>' +
+      '<span class="back-text">' + escHtml(card.back) + '</span>' +
+      '<span class="actions">' +
+        '<button class="btn btn-sm" onclick="restoreCard(\'' + card.id + '\')">↩️</button>' +
+        '<button class="btn btn-sm btn-danger" onclick="deleteMastered(\'' + card.id + '\')">🗑️</button>' +
+      '</span>' +
+    '</div>';
+  });
+  html += '</div>';
+  list.innerHTML = html;
+}
+
+/* 还原单张 */
+function restoreCard(id) {
+  var idx = findIndex(state.data.mastered, id);
+  if (idx === -1) return;
+  var card = state.data.mastered.splice(idx, 1)[0];
+  state.data.pending.push(card);
+  saveData(state.data);
+  showToast('已还原到待学习库', 'success');
+  render();
+}
+
+/* 删除已掌握单张 */
+function deleteMastered(id) {
+  showConfirm('确定永久删除这张闪卡吗？', function() {
+    state.data.mastered = state.data.mastered.filter(function(c) { return c.id !== id; });
+    saveData(state.data);
+    showToast('已永久删除', 'success');
+    render();
+  });
+}
+
+/* 全部还原 */
+function restoreAllMastered() {
+  if (state.data.mastered.length === 0) return;
+  showConfirm('确定将所有已掌握闪卡还原到待学习库吗？', function() {
+    state.data.pending = state.data.pending.concat(state.data.mastered);
+    state.data.mastered = [];
+    saveData(state.data);
+    showToast('已全部还原', 'success');
+    render();
+  });
+}
+
+/* 一键清空已掌握 */
+function clearMastered() {
+  if (state.data.mastered.length === 0) return;
+  showConfirm('确定清空已掌握库吗？此操作不可恢复！', function() {
+    state.data.mastered = [];
+    saveData(state.data);
+    showToast('已掌握库已清空', 'success');
+    render();
+  });
+}
+
+/* ========================================================================
+   批量导入
+   ======================================================================== */
+function openImportModal() {
+  document.getElementById('importText').value = '';
+  openModal('importOverlay');
+}
+
+function doImport() {
+  var text = document.getElementById('importText').value.trim();
+  if (!text) {
+    showToast('请输入闪卡内容', 'error');
+    return;
+  }
+  var lines = text.split('\n');
+  var count = 0;
+  var errors = 0;
+  lines.forEach(function(line) {
+    line = line.trim();
+    if (!line) return; // 跳过空行
+    var parts = line.split('|');
+    if (parts.length < 2) {
+      errors++;
+      return;
+    }
+    var front = parts[0].trim();
+    var back = parts.slice(1).join('|').trim(); // 背面允许含 |
+    if (!front || !back) {
+      errors++;
+      return;
+    }
+    state.data.pending.push({ id: genId(), front: front, back: back });
+    count++;
+  });
+  if (count === 0) {
+    showToast('没有有效的闪卡被导入（需要使用 | 分隔正反面）', 'error');
+    return;
+  }
+  saveData(state.data);
+  closeModal('importOverlay');
+  var msg = '成功导入 ' + count + ' 张闪卡';
+  if (errors > 0) msg += '，' + errors + ' 行格式错误已跳过';
+  showToast(msg, 'success');
+  state.isFlipped = false;
+  render();
+}
+
+/* ========================================================================
+   导出备份
+   ======================================================================== */
+function exportBackup() {
+  var d = state.data;
+  if (d.pending.length === 0 && d.mastered.length === 0) {
+    showToast('没有数据可导出', 'error');
+    return;
+  }
+  var json = JSON.stringify(d, null, 2);
+  var blob = new Blob([json], { type: 'application/json' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = '闪卡备份_' + formatDate(new Date()) + '.json';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast('备份文件已下载', 'success');
+}
+
+/* ========================================================================
+   导入备份
+   ======================================================================== */
+function openBackupImportModal() {
+  document.getElementById('backupFile').value = '';
+  openModal('backupImportOverlay');
+}
+
+function doBackupImport(mode) {
+  var fileInput = document.getElementById('backupFile');
+  var file = fileInput.files[0];
+  if (!file) {
+    showToast('请先选择备份文件', 'error');
+    return;
+  }
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      var imported = JSON.parse(e.target.result);
+      // 校验数据结构
+      if (typeof imported !== 'object' || imported === null) throw new Error('格式错误');
+      if (!Array.isArray(imported.pending)) imported.pending = [];
+      if (!Array.isArray(imported.mastered)) imported.mastered = [];
+
+      // 为缺少 id 的卡片补上
+      var allCards = imported.pending.concat(imported.mastered);
+      allCards.forEach(function(c) {
+        if (!c.id) c.id = genId();
+        if (!c.front) c.front = '(空)';
+        if (!c.back) c.back = '(空)';
+      });
+
+      if (mode === 'overwrite') {
+        state.data = imported;
+      } else {
+        // 合并：去重（按 front+back 判断）
+        var existSet = {};
+        state.data.pending.forEach(function(c) { existSet[c.front + '||' + c.back] = true; });
+        state.data.mastered.forEach(function(c) { existSet[c.front + '||' + c.back] = true; });
+        var newPending = 0, newMastered = 0;
+        imported.pending.forEach(function(c) {
+          if (!existSet[c.front + '||' + c.back]) {
+            state.data.pending.push(c);
+            existSet[c.front + '||' + c.back] = true;
+            newPending++;
+          }
+        });
+        imported.mastered.forEach(function(c) {
+          if (!existSet[c.front + '||' + c.back]) {
+            state.data.mastered.push(c);
+            existSet[c.front + '||' + c.back] = true;
+            newMastered++;
+          }
+        });
+      }
+
+      state.currentIndex = 0;
+      state.isFlipped = false;
+      saveData(state.data);
+      closeModal('backupImportOverlay');
+      showToast(mode === 'overwrite' ? '备份已覆盖导入' : '备份已合并导入', 'success');
+      render();
+    } catch (err) {
+      showToast('备份文件格式错误或已损坏: ' + err.message, 'error');
+    }
+  };
+  reader.onerror = function() {
+    showToast('文件读取失败', 'error');
+  };
+  reader.readAsText(file);
+}
+
+/* ========================================================================
+   编辑闪卡
+   ======================================================================== */
+function openEditCard(id, source) {
+  var list = source === 'pending' ? state.data.pending : state.data.mastered;
+  var idx = findIndex(list, id);
+  if (idx === -1) return;
+  var card = list[idx];
+  state.editId = id;
+  state.editSource = source;
+  document.getElementById('editFront').value = card.front;
+  document.getElementById('editBack').value = card.back;
+  openModal('editOverlay');
+}
+
+function saveEdit() {
+  var front = document.getElementById('editFront').value.trim();
+  var back = document.getElementById('editBack').value.trim();
+  if (!front || !back) {
+    showToast('正反面内容不能为空', 'error');
+    return;
+  }
+  var list = state.editSource === 'pending' ? state.data.pending : state.data.mastered;
+  var idx = findIndex(list, state.editId);
+  if (idx === -1) return;
+  list[idx].front = front;
+  list[idx].back = back;
+  saveData(state.data);
+  closeModal('editOverlay');
+  showToast('闪卡已更新', 'success');
+  render();
+}
+
+/* ========================================================================
+   清空所有数据
+   ======================================================================== */
+function clearAllData() {
+  if (state.data.pending.length === 0 && state.data.mastered.length === 0) {
+    showToast('当前没有任何数据', 'error');
+    return;
+  }
+  showConfirm('确定清空所有数据吗？包括待学习和已掌握的所有闪卡，此操作不可恢复！', function() {
+    state.data = { pending: [], mastered: [] };
+    state.currentIndex = 0;
+    state.isFlipped = false;
+    saveData(state.data);
+    showToast('所有数据已清空', 'success');
+    render();
+  });
+}
+
+/* ========================================================================
+   工具函数
+   ======================================================================== */
+
+/* HTML 转义防 XSS */
+function escHtml(str) {
+  var div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+/* 在数组中查找卡片索引 */
+function findIndex(arr, id) {
+  for (var i = 0; i < arr.length; i++) {
+    if (arr[i].id === id) return i;
+  }
+  return -1;
+}
+
+/* 日期格式化 */
+function formatDate(d) {
+  var y = d.getFullYear();
+  var m = ('0' + (d.getMonth() + 1)).slice(-2);
+  var day = ('0' + d.getDate()).slice(-2);
+  return y + m + day;
+}
+
+/* ========================================================================
+   键盘快捷键
+   ======================================================================== */
+document.addEventListener('keydown', function(e) {
+  // 弹窗打开时不响应快捷键
+  if (document.querySelector('.modal-overlay.show')) {
+    if (e.key === 'Escape') {
+      document.querySelectorAll('.modal-overlay.show').forEach(function(m) {
+        if (m.id !== 'confirmOverlay') m.classList.remove('show');
+      });
+    }
+    return;
+  }
+  if (state.currentTab === 'learn' && state.data.pending.length > 0) {
+    if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') { prevCard(); e.preventDefault(); }
+    if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') { nextCard(); e.preventDefault(); }
+    if (e.key === ' ' || e.key === 'Enter') { flipCard(); e.preventDefault(); }
+  }
+});
+
+/* 监听系统主题变化 */
+if (window.matchMedia) {
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function(e) {
+    // 仅在用户没有手动设置主题时跟随系统
+    if (!localStorage.getItem(THEME_KEY)) {
+      document.documentElement.setAttribute('data-theme', e.matches ? 'dark' : 'light');
+      updateThemeBtn(e.matches ? 'dark' : 'light');
+    }
+  });
+}
+
+/* ========================================================================
+   初始化
+   ======================================================================== */
+initTheme();
+render();
+</script>
+</body>
+</html>
