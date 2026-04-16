@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         🖍️ 荧光笔 Pro
 // @namespace    http://tampermonkey.net/
-// @version      2.4
-// @description  按住右键画荧光笔，发光渐变样式，智能右键检测，配置自动保存，修复断画/右键弹出
+// @version      2.5
+// @description  按住右键画荧光笔，发光渐变样式，智能右键检测，配置自动保存，深度修复断画/右键弹出
 // @author       StripeP
 // @match        *://*/*
 // @grant        GM_addStyle
@@ -343,18 +343,20 @@
     function startDraw(e) {
         if (e.button !== 2 && e.type !== 'touchstart') return;
         if (e.target.closest && e.target.closest('.hl-tb')) return;
-        // 右键按下时立即阻止默认行为，防止某些页面元素抢先弹出右键菜单
+        // 右键按下时立即阻止默认行为
         e.preventDefault();
         var p = pos(e);
         rightDownPos = p; rightButtonDown = true; hasDrawn = false;
+        _paintingActive = true; // ★ 标记绘画模式开启
+        _lastRightDownTime = Date.now(); // ★ 记录按下时间
         lastX = p.x; lastY = p.y;
     }
 
     function draw(e) {
         if (!rightButtonDown) return;
-        // 只要右键按住移动，一律阻止默认行为（防止iframe/特殊元素触发contextmenu）
+        // 只要右键按住移动，一律阻止默认行为
         e.preventDefault();
-        e.stopPropagation();
+        e.stopImmediatePropagation(); // ★ 更强的阻止：防止同一阶段其他监听器收到事件
         var p = pos(e);
         var dx = p.x - rightDownPos.x, dy = p.y - rightDownPos.y;
         var dist = Math.sqrt(dx*dx + dy*dy);
@@ -381,30 +383,36 @@
     }
 
     function endDraw(e) {
-        if (e.button === 2 || e.type === 'touchend' || e.type === 'mouseleave') {
+        // ★ 放宽检测条件：只要右键相关或正处于绘画状态都处理
+        if (e.button === 2 || e.type === 'touchend' || e.type === 'mouseleave' || e.type === 'pointerup' || rightButtonDown || isDrawing) {
             if (isDrawing || hasDrawn) {
                 isDrawing = false; rightButtonDown = false; rightDownPos = null;
                 lastX = null; lastY = null; currentStroke = [];
+                _paintingActive = false; // ★ 标记绘画模式关闭
+                _lastRightDownTime = 0;
                 suppressNextContextMenu = true;
-                setTimeout(function(){ suppressNextContextMenu = false; }, 80);
+                // ★ 延长拦截窗口到300ms，确保contextmenu事件被完全吞掉
+                setTimeout(function(){ 
+                    suppressNextContextMenu = false; 
+                    hasDrawn = false; // 延迟重置hasDrawn，确保contextmenu拦截窗口内hasDrawn仍为true
+                }, 300);
             } else {
                 rightButtonDown = false; rightDownPos = null; hasDrawn = false;
+                _paintingActive = false;
+                _lastRightDownTime = 0;
             }
-        }
-        // 兜底：如果右键已经松开但状态还在绘画中，强制清理
-        if (e.button === 2 && isDrawing) {
-            isDrawing = false; rightButtonDown = false;
-            lastX = null; lastY = null; currentStroke = [];
         }
     }
 
     function forceEnd() {
         if (rightButtonDown || isDrawing) {
             isDrawing = false; rightButtonDown = false;
-            rightDownPos = null; hasDrawn = false;
+            rightDownPos = null; hasDrawn = true; // ★ 设为true而非false，确保后续contextmenu被拦截
             lastX = null; lastY = null; currentStroke = [];
+            _paintingActive = false;
+            _lastRightDownTime = 0;
             suppressNextContextMenu = true;
-            setTimeout(function(){ suppressNextContextMenu = false; }, 100);
+            setTimeout(function(){ suppressNextContextMenu = false; hasDrawn = false; }, 300);
         }
     }
 
@@ -460,20 +468,26 @@
 
     // ========== 右键菜单 & 双击工具栏 ==========
     var lRC=0, rCnt=0, rRT=null;
+    var _paintingActive = false; // 绘画总开关：右键按下到松开的整段时间内为true
 
-    // 在捕获阶段全局拦截contextmenu——防止某些页面元素抢先弹出右键菜单
+    // ★★★ 核心拦截：在捕获阶段最早期拦截所有contextmenu ★★★
+    // 只要 _paintingActive 为true（右键按下期间）或画过笔迹，一律吞掉右键菜单
     document.addEventListener('contextmenu', function(e){
-        if (isDrawing || rightButtonDown || hasDrawn || suppressNextContextMenu) {
+        if (_paintingActive || isDrawing || rightButtonDown || hasDrawn || suppressNextContextMenu) {
             e.preventDefault();
-            e.stopPropagation();
+            e.stopImmediatePropagation(); // ★ 比stopPropagation更强，阻止同一阶段的其他监听器
             return false;
         }
-    }, true);
+    }, true); // 捕获阶段，最高优先级
 
-    // 冒泡阶段：处理双击右键调出工具栏
+    // 冒泡阶段：仅在非绘画状态下处理双击右键调出工具栏
     document.addEventListener('contextmenu', function(e){
+        if (_paintingActive || isDrawing || hasDrawn || suppressNextContextMenu) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            return false;
+        }
         var now = Date.now();
-        if (isDrawing || hasDrawn || suppressNextContextMenu) { e.preventDefault(); return false; }
         if (now - lRC < 400) {
             rCnt++;
             if (rCnt >= 1) { clearTimeout(rRT); rCnt=0; lRC=0; toggleTB(e); return false; }
@@ -483,18 +497,56 @@
     });
 
     // ========== 事件绑定 ==========
+    // ★ 所有关键事件都在捕获阶段绑定，且使用最高优先级
     document.addEventListener('mousedown', startDraw, true);
     document.addEventListener('mousemove', draw, true);
+    
+    // ★ mouseup 同时绑定 document 和 window，防止事件被页面元素吞掉
     document.addEventListener('mouseup', endDraw, true);
+    window.addEventListener('mouseup', function(e) {
+        // 兜底：如果document的mouseup没触发（被吞了），window级别再收一次
+        if (rightButtonDown || isDrawing) {
+            endDraw(e);
+        }
+    }, true);
+    
     document.addEventListener('mouseleave', forceEnd, true);
     document.documentElement.addEventListener('mouseleave', function(e){
         if (e.target === document.documentElement) forceEnd();
     }, true);
+    
+    // ★ 指针事件兼容：某些页面只用pointer事件不用mouse事件
+    document.addEventListener('pointerup', function(e) {
+        if (e.button === 2 && (rightButtonDown || isDrawing)) {
+            endDraw(e);
+        }
+    }, true);
+    
+    // ★ 定时器轮询检测：如果右键状态异常持续超过2秒，自动重置
+    // 防止任何边缘情况导致状态卡死
+    var _lastRightDownTime = 0;
+    var _watchdogTimer = setInterval(function() {
+        if (rightButtonDown && _lastRightDownTime > 0) {
+            var elapsed = Date.now() - _lastRightDownTime;
+            // 右键按住超过10秒还没松开，肯定是状态卡死了
+            if (elapsed > 10000) {
+                forceEnd();
+            }
+        }
+    }, 1000);
+    
     document.addEventListener('touchstart', function(e){ if(e.touches.length===1)startDraw(e); }, {passive:false});
     document.addEventListener('touchmove', function(e){ if(isDrawing){draw(e);e.preventDefault();}}, {passive:false});
     document.addEventListener('touchend', endDraw);
     document.addEventListener('touchcancel', forceEnd, {passive:false});
     document.addEventListener('dragstart', function(e){ if(isDrawing||rightButtonDown)e.preventDefault(); }, true);
     window.addEventListener('blur', forceEnd, true);
+    
+    // ★ 全局按键监听：Escape键强制结束绘画
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && (isDrawing || rightButtonDown)) {
+            forceEnd();
+        }
+    }, true);
 
 })();
