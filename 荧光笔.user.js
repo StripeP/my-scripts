@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         🖍️ 荧光笔 Pro
 // @namespace    http://tampermonkey.net/
-// @version      2.3.1
-// @description  按住右键画荧光笔，发光渐变样式，智能右键检测，配置自动保存（localStorage）
+// @version      2.4
+// @description  按住右键画荧光笔，发光渐变样式，智能右键检测，配置自动保存，修复断画/右键弹出
 // @author       StripeP
 // @match        *://*/*
 // @grant        GM_addStyle
@@ -342,7 +342,9 @@
     // ---------- 绘制事件 ----------
     function startDraw(e) {
         if (e.button !== 2 && e.type !== 'touchstart') return;
-        if (e.target.closest('.hl-tb')) return;
+        if (e.target.closest && e.target.closest('.hl-tb')) return;
+        // 右键按下时立即阻止默认行为，防止某些页面元素抢先弹出右键菜单
+        e.preventDefault();
         var p = pos(e);
         rightDownPos = p; rightButtonDown = true; hasDrawn = false;
         lastX = p.x; lastY = p.y;
@@ -350,13 +352,15 @@
 
     function draw(e) {
         if (!rightButtonDown) return;
+        // 只要右键按住移动，一律阻止默认行为（防止iframe/特殊元素触发contextmenu）
+        e.preventDefault();
+        e.stopPropagation();
         var p = pos(e);
         var dx = p.x - rightDownPos.x, dy = p.y - rightDownPos.y;
         var dist = Math.sqrt(dx*dx + dy*dy);
 
         if (!isDrawing && dist > DRAW_THRESHOLD) {
             isDrawing = true; hasDrawn = true; currentStroke = [];
-            e.preventDefault();
             var first = dot(rightDownPos.x, rightDownPos.y);
             container.appendChild(first);
             currentStroke.push(first); strokeElements.push(first);
@@ -364,7 +368,6 @@
             if (CONFIG.fadeEnabled) schedFade(currentStroke);
         }
         if (isDrawing) {
-            e.preventDefault();
             if (lastX != null && lastY != null) {
                 var pts = interp(lastX, lastY, p.x, p.y);
                 for (var pi = 0; pi < pts.length; pi++) {
@@ -383,10 +386,15 @@
                 isDrawing = false; rightButtonDown = false; rightDownPos = null;
                 lastX = null; lastY = null; currentStroke = [];
                 suppressNextContextMenu = true;
-                setTimeout(function(){ suppressNextContextMenu = false; }, 50);
+                setTimeout(function(){ suppressNextContextMenu = false; }, 80);
             } else {
                 rightButtonDown = false; rightDownPos = null; hasDrawn = false;
             }
+        }
+        // 兜底：如果右键已经松开但状态还在绘画中，强制清理
+        if (e.button === 2 && isDrawing) {
+            isDrawing = false; rightButtonDown = false;
+            lastX = null; lastY = null; currentStroke = [];
         }
     }
 
@@ -396,7 +404,7 @@
             rightDownPos = null; hasDrawn = false;
             lastX = null; lastY = null; currentStroke = [];
             suppressNextContextMenu = true;
-            setTimeout(function(){ suppressNextContextMenu = false; }, 80);
+            setTimeout(function(){ suppressNextContextMenu = false; }, 100);
         }
     }
 
@@ -453,6 +461,16 @@
     // ========== 右键菜单 & 双击工具栏 ==========
     var lRC=0, rCnt=0, rRT=null;
 
+    // 在捕获阶段全局拦截contextmenu——防止某些页面元素抢先弹出右键菜单
+    document.addEventListener('contextmenu', function(e){
+        if (isDrawing || rightButtonDown || hasDrawn || suppressNextContextMenu) {
+            e.preventDefault();
+            e.stopPropagation();
+            return false;
+        }
+    }, true);
+
+    // 冒泡阶段：处理双击右键调出工具栏
     document.addEventListener('contextmenu', function(e){
         var now = Date.now();
         if (isDrawing || hasDrawn || suppressNextContextMenu) { e.preventDefault(); return false; }
